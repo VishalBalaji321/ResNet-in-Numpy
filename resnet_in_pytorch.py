@@ -9,6 +9,8 @@ from torchvision import datasets
 from torchvision import transforms
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from torch.utils.tensorboard import SummaryWriter
+
 def data_loader(
     data_dir,
     batch_size,
@@ -51,7 +53,7 @@ def data_loader(
         download=True, transform=transform
     )
 
-    num_train = len(train_dataset)
+    num_train = int(len(train_dataset) / 5)
     indices = list(range(num_train))
     split = int(np.floor(valid_size * num_train))
 
@@ -73,13 +75,6 @@ def data_loader(
 
     return (train_loader, valid_loader)
 
-# CIFAR10 dataset
-train_loader, valid_loader = data_loader(data_dir="/home/visha/cifar10", batch_size=64)
-test_loader = data_loader(data_dir="/home/visha/cifar10", batch_size=64, test=True)
-
-for data, label in train_loader:
-    print(data.shape)
-    break
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
@@ -158,8 +153,17 @@ class ResNet(nn.Module):
 
 num_classes = 10
 num_epochs = 20
-batch_size = 16
+batch_size = 64
 learning_rate = 0.01
+writer = SummaryWriter(f"runs/lr{learning_rate}_bs{batch_size}")
+
+# CIFAR10 dataset
+train_loader, valid_loader = data_loader(data_dir="/home/visha/cifar10", batch_size=batch_size)
+test_loader = data_loader(data_dir="/home/visha/cifar10", batch_size=batch_size, test=True)
+
+for data, label in train_loader:
+    print(data.shape)
+    break
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -189,6 +193,16 @@ for epoch in range(num_epochs):
             loss.backward()
             optimizer.step()
 
+            if i == 0:
+                if epoch == 0:
+                    writer.add_graph(model, images)
+
+                writer.add_scalar(
+                    "train/loss",
+                    loss,
+                    epoch
+                )
+
             # Cleaning memory
             del images, labels, outputs
             torch.cuda.empty_cache()
@@ -204,7 +218,7 @@ for epoch in range(num_epochs):
         correct = 0
         total = 0
         with tqdm(total=total_valid_steps) as pbar_valid:
-            for images, labels in valid_loader:
+            for valid_step, (images, labels) in enumerate(valid_loader):
                 images = images.to(device)
                 labels = labels.to(device)
 
@@ -212,6 +226,14 @@ for epoch in range(num_epochs):
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
+                
+                if valid_step == total_valid_steps - 1:
+                    writer.add_scalar(
+                        "valid/accuracy",
+                        100 * correct/total,
+                        epoch
+                    )
+
                 del images, labels, outputs
 
                 pbar_valid.update(1)
