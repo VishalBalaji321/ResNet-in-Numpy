@@ -153,7 +153,7 @@ class ResNet(nn.Module):
 
 num_classes = 10
 num_epochs = 20
-batch_size = 64
+batch_size = 256
 learning_rate = 0.01
 writer = SummaryWriter(f"runs/lr{learning_rate}_bs{batch_size}")
 
